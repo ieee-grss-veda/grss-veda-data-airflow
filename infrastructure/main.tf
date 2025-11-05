@@ -16,6 +16,18 @@ resource "random_password" "password" {
   override_special = "_%@"
 }
 
+# Generate airflow.cfg from template with proper variable substitution
+resource "local_file" "airflow_cfg" {
+  content = templatefile("${path.module}/configuration/airflow.cfg.tmpl", {
+    gh_app_client_id     = var.gh_app_client_id
+    gh_app_client_secret = var.gh_app_client_secret
+    gh_team_id           = var.gh_team_name
+    sm2a_base_url        = "https://${lower(var.subdomain)}.${var.domain_name}"
+    prefix               = var.prefix
+  })
+  filename = "${path.module}/configuration/airflow.cfg"
+}
+
 module "rds_backups" {
   source = "./rds_backups"
   count = var.snapshot_bucket_name != "" ? 1 : 0
