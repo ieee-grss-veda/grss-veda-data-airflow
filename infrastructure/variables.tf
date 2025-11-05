@@ -69,14 +69,26 @@ variable "desired_max_workers_count" {
   default = "5"
 }
 
-variable "gh_app_client_id" {
-
+variable "keycloak_client_id" {
+  description = "GRSS VEDA auth OAuth client ID for Airflow authentication"
+  type        = string
 }
-variable "gh_app_client_secret" {
 
+variable "keycloak_client_secret" {
+  description = "GRSS VEDA auth OAuth client secret for Airflow authentication"
+  type        = string
+  sensitive   = true
 }
-variable "gh_team_name" {
 
+variable "keycloak_base_url" {
+  description = "Base URL for GRSS VEDA auth"
+  type        = string
+}
+
+variable "keycloak_realm" {
+  description = "GRSS VEDA realm name"
+  type        = string
+  default     = "veda"
 }
 
 variable "custom_worker_policy_statement" {
@@ -142,8 +154,16 @@ variable "project_name" {
 }
 
 
-variable "gh_user_team_id" {
-  default = "csda-airflow-data-pipeline-users"
+variable "keycloak_admin_role" {
+  description = "Keycloak role name that maps to Airflow Admin role"
+  type        = string
+  default     = "grss-veda-airflow-admin"
+}
+
+variable "keycloak_viewer_role" {
+  description = "Keycloak role name that maps to Airflow Viewer role"
+  type        = string
+  default     = "grss-veda-airflow-viewer"
 }
 
 variable "workflows_client_secret" {
@@ -206,8 +226,10 @@ variable "assume_role_write_arn" {
   default = ""
 }
 
-variable "gh_dag_launcher_team_id" {
-  default = "VEDA-DAG-Launcher"
+variable "keycloak_dag_launcher_role" {
+  description = "GRSS VEDA auth role name that maps to Airflow DAG Launcher role"
+  type        = string
+  default     = "GRSS-VEDA-dag-launcher"
 }
 
 variable "snapshot_bucket_name" {

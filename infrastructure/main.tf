@@ -19,11 +19,8 @@ resource "random_password" "password" {
 # Generate airflow.cfg from template with proper variable substitution
 resource "local_file" "airflow_cfg" {
   content = templatefile("${path.module}/configuration/airflow.cfg.tmpl", {
-    gh_app_client_id     = var.gh_app_client_id
-    gh_app_client_secret = var.gh_app_client_secret
-    gh_team_id           = var.gh_team_name
-    sm2a_base_url        = "https://${lower(var.subdomain)}.${var.domain_name}"
-    prefix               = var.prefix
+    sm2a_base_url = "https://${lower(var.subdomain)}.${var.domain_name}"
+    prefix        = var.prefix
   })
   filename = "${path.module}/configuration/airflow.cfg"
 }
@@ -78,32 +75,37 @@ module "sma-base" {
       value = var.workers_task_retries
     },
     {
-      name  = "GH_CLIENT_ID"
-      value = var.gh_app_client_id
+      name  = "KEYCLOAK_CLIENT_ID"
+      value = var.keycloak_client_id
     },
     {
-      name  = "GH_CLIENT_SECRET"
-      value = var.gh_app_client_secret
+      name  = "KEYCLOAK_CLIENT_SECRET"
+      value = var.keycloak_client_secret
     },
     {
-      name  = "GH_ADMIN_TEAM_ID"
-      value = var.gh_team_name
+      name  = "KEYCLOAK_BASE_URL"
+      value = var.keycloak_base_url
     },
     {
-      name  = "GH_USER_TEAM_ID"
-      value = var.gh_user_team_id
+      name  = "KEYCLOAK_REALM"
+      value = var.keycloak_realm
     },
     {
-      name  = "GH_DAG_LAUNCHER_TEAM_ID"
-      value = var.gh_dag_launcher_team_id
+      name  = "KEYCLOAK_ADMIN_ROLE"
+      value = var.keycloak_admin_role
+    },
+    {
+      name  = "KEYCLOAK_VIEWER_ROLE"
+      value = var.keycloak_viewer_role
+    },
+    {
+      name  = "KEYCLOAK_DAG_LAUNCHER_ROLE"
+      value = var.keycloak_dag_launcher_role
     }
 
   ]
   extra_airflow_configuration = {
-    gh_app_client_id     = var.gh_app_client_id
-    gh_app_client_secret = var.gh_app_client_secret
-    gh_team_id           = var.gh_team_name
-    sm2a_base_url        = "https://${lower(var.subdomain)}.${var.domain_name}"
+    sm2a_base_url = "https://${lower(var.subdomain)}.${var.domain_name}"
   }
   domain_name = var.domain_name
   stage       = var.stage
