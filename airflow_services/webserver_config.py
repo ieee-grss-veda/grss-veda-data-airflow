@@ -235,7 +235,7 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
 
 SECURITY_MANAGER_CLASS = KeycloakAuthorizer
 # The default user self registration role
-# AUTH_USER_REGISTRATION_ROLE = "Public"
+AUTH_USER_REGISTRATION_ROLE = "Viewer"
 
 # When using OAuth Auth, uncomment to setup provider(s) info
 # Google OAuth example:
