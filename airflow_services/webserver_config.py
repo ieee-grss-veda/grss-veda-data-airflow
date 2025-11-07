@@ -75,12 +75,12 @@ AUTH_ROLES_SYNC_AT_LOGIN = True  # Checks roles on every login
 AUTH_USER_REGISTRATION = (
     True  # allow users who are not already in the FAB DB to register
 )
-# Make sure to replace this with the path to your security manager class
-AUTH_ROLES_MAPPING = {
-    "Viewer": ["Viewer"],
-    "Admin": ["Admin"],
-    "Dag_Launcher": ["DAG Launcher"],
-}
+
+KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "veda-airflow")
+KEYCLOAK_ADMIN_ROLE = os.getenv("KEYCLOAK_ADMIN_ROLE", "grss-veda-airflow-admin")
+KEYCLOAK_VIEWER_ROLE = os.getenv("KEYCLOAK_VIEWER_ROLE", "grss-veda-airflow-viewer")
+KEYCLOAK_DAG_LAUNCHER_ROLE = os.getenv("KEYCLOAK_DAG_LAUNCHER_ROLE", "GRSS-VEDA-dag-launcher")
+
 # If you wish, you can add multiple OAuth providers.
 OAUTH_PROVIDERS = [
     {
@@ -88,7 +88,7 @@ OAUTH_PROVIDERS = [
         "icon": "fa-key",
         "token_key": "access_token",
         "remote_app": {
-            "client_id": os.getenv("KEYCLOAK_CLIENT_ID"),
+            "client_id": KEYCLOAK_CLIENT_ID,
             "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
             "api_base_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect",
             "client_kwargs": {"scope": "openid email profile"},
@@ -108,9 +108,6 @@ FAB_ADMIN_ROLE = "Admin"
 FAB_VIEWER_ROLE = "Viewer"
 FAB_DAG_LAUNCHER_ROLE = "Dag_Launcher"
 FAB_PUBLIC_ROLE = "Public"  # The "Public" role is given no permissions
-KEYCLOAK_ADMIN_ROLE = os.getenv("KEYCLOAK_ADMIN_ROLE", "grss-veda-airflow-admin")
-KEYCLOAK_VIEWER_ROLE = os.getenv("KEYCLOAK_VIEWER_ROLE", "grss-veda-airflow-viewer")
-KEYCLOAK_DAG_LAUNCHER_ROLE = os.getenv("KEYCLOAK_DAG_LAUNCHER_ROLE", "GRSS-VEDA-dag-launcher")
 
 
 def parse_keycloak_roles(roles_payload: list[str]) -> list[str]:
