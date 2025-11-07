@@ -36,6 +36,13 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 WTF_CSRF_ENABLED = True
 WTF_CSRF_TIME_LIMIT = None
 ENABLE_PROXY_FIX = True
+PROXY_FIX_CONFIG = {
+    "x_for": 1,
+    "x_proto": 1,
+    "x_host": 1,
+    "x_port": 1,
+    "x_prefix": 1
+}
 
 # ----------------------------------------------------
 # AUTHENTICATION CONFIG
@@ -93,8 +100,7 @@ OAUTH_PROVIDERS = [
             "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
             "api_base_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect",
             "client_kwargs": {
-                "scope": "openid email profile",
-                "redirect_uri": f"{os.getenv('SM2A_BASE_URL')}"
+                "scope": "openid email profile"
             },
             "access_token_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/token",
             "authorize_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/auth",
