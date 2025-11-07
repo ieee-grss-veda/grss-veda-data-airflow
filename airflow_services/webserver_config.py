@@ -27,6 +27,8 @@ from airflow.auth.managers.fab.security_manager.override import (
 import logging
 from typing import Any, Union
 import os
+import jwt
+import json
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -161,29 +163,41 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
         # Extract username (prefer 'preferred_username', fall back to 'email' or 'sub')
         username = userinfo.get("preferred_username") or userinfo.get("email") or userinfo.get("sub")
 
-        # Extract roles from the token
-        # Keycloak can provide roles in different places depending on configuration:
-        # - In the access token's 'realm_access.roles'
-        # - In the access token's 'resource_access.{client_id}.roles'
-        # - In custom claims
+        log.info(f"Extracted username: {username}")
 
-        # First, try to get roles from the userinfo response
+        # Extract roles from the ACCESS TOKEN, not userinfo
+        # The userinfo endpoint doesn't include realm_access or roles by default
+        # We need to decode the JWT access token to get roles
         keycloak_roles = []
 
-        # Check for realm roles
-        if "realm_access" in userinfo and "roles" in userinfo["realm_access"]:
-            keycloak_roles.extend(userinfo["realm_access"]["roles"])
+        try:
+            # Get the access token from the OAuth response
+            access_token = None
 
-        # Check for client-specific roles
-        client_id = os.getenv("KEYCLOAK_CLIENT_ID")
-        if "resource_access" in userinfo and client_id in userinfo["resource_access"]:
-            client_roles = userinfo["resource_access"][client_id].get("roles", [])
-            keycloak_roles.extend(client_roles)
+            # Try different ways to get the access token
+            if hasattr(resp, 'get') and callable(resp.get):
+                access_token = resp.get('access_token')
+            elif isinstance(resp, dict):
+                access_token = resp.get('access_token')
 
-        # Check for roles in a custom 'roles' claim (some Keycloak configurations)
-        if "roles" in userinfo:
-            if isinstance(userinfo["roles"], list):
-                keycloak_roles.extend(userinfo["roles"])
+            # Try to get from the remote app's token
+            if not access_token:
+                try:
+                    token = remote_app.token
+                    if token:
+                        access_token = token.get('access_token')
+                except:
+                    pass
+
+            if access_token:
+                decoded_token = jwt.decode(access_token, options={"verify_signature": False})
+                if "resource_access" in decoded_token and KEYCLOAK_CLIENT_ID in decoded_token["resource_access"]:
+                    client_roles = decoded_token["resource_access"][KEYCLOAK_CLIENT_ID].get("roles", [])
+                    keycloak_roles.extend(client_roles)
+            else:
+                log.warning("Could not find access token to extract roles")
+        except Exception as e:
+            log.error(f"Failed to decode JWT token and extract roles: {str(e)}", exc_info=True)
 
         # Parse and map roles
         parsed_roles = parse_keycloak_roles(keycloak_roles)
