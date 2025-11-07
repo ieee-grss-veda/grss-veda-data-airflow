@@ -92,7 +92,10 @@ OAUTH_PROVIDERS = [
             "client_id": KEYCLOAK_CLIENT_ID,
             "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
             "api_base_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect",
-            "client_kwargs": {"scope": "openid email profile"},
+            "client_kwargs": {
+                "scope": "openid email profile",
+                "redirect_uri": f"{os.getenv('SM2A_BASE_URL')}"
+            },
             "access_token_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/token",
             "authorize_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/auth",
             "server_metadata_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/.well-known/openid-configuration",
