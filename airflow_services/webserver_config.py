@@ -155,17 +155,6 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
             log.warning(f"Unexpected OAuth provider: {provider}")
             return {"username": "unknown", "role_keys": [FAB_PUBLIC_ROLE]}
 
-        remote_app = self.appbuilder.sm.oauth_remotes[provider]
-
-        # Get user info from Keycloak's userinfo endpoint
-        userinfo_response = remote_app.get("userinfo")
-        userinfo = userinfo_response.json()
-
-        # Extract username (prefer 'preferred_username', fall back to 'email' or 'sub')
-        username = userinfo.get("preferred_username") or userinfo.get("email") or userinfo.get("sub")
-
-        log.info(f"Extracted username: {username}")
-
         # Extract roles from the ACCESS TOKEN, not userinfo
         # The userinfo endpoint doesn't include realm_access or roles by default
         # We need to decode the JWT access token to get roles
@@ -197,7 +186,6 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
                 email = decoded_token.get("email")
                 first_name = decoded_token.get("given_name")
                 last_name = decoded_token.get("family_name")
-                log.info(f"Extracted username: {username}")
 
                 # Extract realm roles
                 if "realm_access" in decoded_token:
