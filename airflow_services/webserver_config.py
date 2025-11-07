@@ -35,6 +35,7 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 # Flask-WTF flag for CSRF
 WTF_CSRF_ENABLED = True
 WTF_CSRF_TIME_LIMIT = None
+ENABLE_PROXY_FIX = True
 
 # ----------------------------------------------------
 # AUTHENTICATION CONFIG
@@ -91,7 +92,10 @@ OAUTH_PROVIDERS = [
             "client_id": KEYCLOAK_CLIENT_ID,
             "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
             "api_base_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect",
-            "client_kwargs": {"scope": "openid email profile"},
+            "client_kwargs": {
+                "scope": "openid email profile"
+                "redirect_uri": f"{os.getenv('SM2A_BASE_URL')}",
+            },
             "access_token_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/token",
             "authorize_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/auth",
             "server_metadata_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/.well-known/openid-configuration",
@@ -188,6 +192,13 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
 
             if access_token:
                 decoded_token = jwt.decode(access_token, options={"verify_signature": False})
+                
+                username = decoded_token.get("preferred_username") or decoded_token.get("email") or decoded_token.get("sub")
+                email = decoded_token.get("email")
+                first_name = decoded_token.get("given_name")
+                last_name = decoded_token.get("family_name")
+                log.info(f"Extracted username: {username}")
+
                 if "resource_access" in decoded_token and KEYCLOAK_CLIENT_ID in decoded_token["resource_access"]:
                     client_roles = decoded_token["resource_access"][KEYCLOAK_CLIENT_ID].get("roles", [])
                     keycloak_roles.extend(client_roles)
@@ -204,9 +215,9 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
 
         return {
             "username": f"keycloak_{username}",
-            "email": userinfo.get("email"),
-            "first_name": userinfo.get("given_name", ""),
-            "last_name": userinfo.get("family_name", ""),
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
             "role_keys": airflow_roles
         }
 
