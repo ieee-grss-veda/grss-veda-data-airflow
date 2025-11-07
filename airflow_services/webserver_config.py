@@ -232,6 +232,55 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
             "role_keys": airflow_roles
         }
 
+    def auth_user_oauth(self, userinfo: dict[str, Any]) -> Any:
+        # Override to properly handle role assignment from OAuth.
+        # This method is called during OAuth login to find or create the user
+        # and assign roles based on the Keycloak token.
+
+        user = self.find_user(username=userinfo["username"])
+
+        # Get the roles to assign
+        role_keys = userinfo.get("role_keys", [FAB_PUBLIC_ROLE])
+
+        log.info(f"auth_user_oauth called for user: {userinfo['username']}, role_keys: {role_keys}")
+
+        # Find the actual role objects from role names
+        roles = []
+        for role_name in role_keys:
+            role = self.find_role(role_name)
+            if role:
+                roles.append(role)
+                log.info(f"Found role: {role_name}")
+            else:
+                log.warning(f"Role not found in database: {role_name}")
+
+        # If no valid roles found, assign Public role
+        if not roles:
+            log.warning(f"No valid roles found for user {userinfo['username']}, assigning Public role")
+            public_role = self.find_role(FAB_PUBLIC_ROLE)
+            if public_role:
+                roles = [public_role]
+
+        # If user doesn't exist, create them
+        if not user:
+            log.info(f"Creating new user: {userinfo['username']}")
+            user = self.add_user(
+                username=userinfo["username"],
+                first_name=userinfo.get("first_name", ""),
+                last_name=userinfo.get("last_name", ""),
+                email=userinfo.get("email", ""),
+                role=roles  # Assign roles during creation
+            )
+        else:
+            log.info(f"Updating existing user: {userinfo['username']}")
+            # Update user's roles
+            user.roles = roles
+            self.update_user(user)
+
+        log.info(f"User {userinfo['username']} logged in with roles: {[r.name for r in user.roles]}")
+
+        return user
+
 
 SECURITY_MANAGER_CLASS = KeycloakAuthorizer
 # The default user self registration role
