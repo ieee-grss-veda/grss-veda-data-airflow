@@ -199,9 +199,20 @@ class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
                 last_name = decoded_token.get("family_name")
                 log.info(f"Extracted username: {username}")
 
+                # Extract realm roles
+                if "realm_access" in decoded_token:
+                    realm_roles = decoded_token["realm_access"].get("roles", [])
+                    keycloak_roles.extend(realm_roles)
+                    log.info(f"Found realm roles: {realm_roles}")
+
+                # Extract client-specific roles
                 if "resource_access" in decoded_token and KEYCLOAK_CLIENT_ID in decoded_token["resource_access"]:
                     client_roles = decoded_token["resource_access"][KEYCLOAK_CLIENT_ID].get("roles", [])
                     keycloak_roles.extend(client_roles)
+                    log.info(f"Found client roles: {client_roles}")
+
+                if not keycloak_roles:
+                    log.warning(f"No roles found in token. Decoded token keys: {decoded_token.keys()}")
             else:
                 log.warning("Could not find access token to extract roles")
         except Exception as e:
