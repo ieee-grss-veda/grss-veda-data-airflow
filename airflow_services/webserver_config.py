@@ -27,12 +27,22 @@ from airflow.auth.managers.fab.security_manager.override import (
 import logging
 from typing import Any, Union
 import os
+import jwt
+import json
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 # Flask-WTF flag for CSRF
 WTF_CSRF_ENABLED = True
 WTF_CSRF_TIME_LIMIT = None
+ENABLE_PROXY_FIX = True
+PROXY_FIX_CONFIG = {
+    "x_for": 1,
+    "x_proto": 1,
+    "x_host": 1,
+    "x_port": 1,
+    "x_prefix": 1
+}
 
 # ----------------------------------------------------
 # AUTHENTICATION CONFIG
@@ -73,25 +83,28 @@ AUTH_ROLES_SYNC_AT_LOGIN = True  # Checks roles on every login
 AUTH_USER_REGISTRATION = (
     True  # allow users who are not already in the FAB DB to register
 )
-# Make sure to replace this with the path to your security manager class
-AUTH_ROLES_MAPPING = {
-    "Viewer": ["Viewer"],
-    "Admin": ["Admin"],
-    "Dag_Launcher": ["DAG Launcher"],
-}
+
+KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "veda-airflow")
+KEYCLOAK_ADMIN_ROLE = os.getenv("KEYCLOAK_ADMIN_ROLE", "grss-veda-airflow-admin")
+KEYCLOAK_VIEWER_ROLE = os.getenv("KEYCLOAK_VIEWER_ROLE", "grss-veda-airflow-viewer")
+KEYCLOAK_DAG_LAUNCHER_ROLE = os.getenv("KEYCLOAK_DAG_LAUNCHER_ROLE", "GRSS-VEDA-dag-launcher")
+
 # If you wish, you can add multiple OAuth providers.
 OAUTH_PROVIDERS = [
     {
-        "name": "github",
-        "icon": "fa-github",
+        "name": "keycloak",
+        "icon": "fa-key",
         "token_key": "access_token",
         "remote_app": {
-            "client_id": os.getenv("GH_CLIENT_ID"),
-            "client_secret": os.getenv("GH_CLIENT_SECRET"),
-            "api_base_url": "https://api.github.com",
-            "client_kwargs": {"scope": "read:user, read:org"},
-            "access_token_url": "https://github.com/login/oauth/access_token",
-            "authorize_url": "https://github.com/login/oauth/authorize",
+            "client_id": KEYCLOAK_CLIENT_ID,
+            "client_secret": os.getenv("KEYCLOAK_CLIENT_SECRET"),
+            "api_base_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect",
+            "client_kwargs": {
+                "scope": "openid email profile"
+            },
+            "access_token_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/token",
+            "authorize_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/protocol/openid-connect/auth",
+            "server_metadata_url": f"{os.getenv('KEYCLOAK_BASE_URL')}/realms/{os.getenv('KEYCLOAK_REALM')}/.well-known/openid-configuration",
             "request_token_url": None,
         },
     },
@@ -105,53 +118,167 @@ FAB_ADMIN_ROLE = "Admin"
 FAB_VIEWER_ROLE = "Viewer"
 FAB_DAG_LAUNCHER_ROLE = "Dag_Launcher"
 FAB_PUBLIC_ROLE = "Public"  # The "Public" role is given no permissions
-TEAM_ID_A_FROM_GITHUB = os.getenv("GH_ADMIN_TEAM_ID")
-TEAM_ID_B_FROM_GITHUB = os.getenv("GH_USER_TEAM_ID")
-TEAM_ID_DAG_LAUNCHER_FROM_GITHUB = os.getenv("GH_DAG_LAUNCHER_TEAM_ID")
 
 
-def team_parser(team_payload: dict[str, Any]) -> list[int]:
-    # Parse the team payload from GitHub however you want here.
-    return [team["name"] for team in team_payload]
+def parse_keycloak_roles(roles_payload: list[str]) -> list[str]:
+    # Parse the roles from Keycloak JWT token or userinfo endpoint.
+    # Returns a list of role names.
+    return roles_payload if roles_payload else []
 
 
-def map_roles(team_list: list[int]) -> list[str]:
-    # Associate the team IDs with Roles here.
+def map_keycloak_roles_to_airflow(keycloak_roles: list[str]) -> list[str]:
+    # Map Keycloak roles to Airflow FAB roles.
     # The expected output is a list of roles that FAB will use to Authorize the user.
 
-    team_role_map = {
-        TEAM_ID_A_FROM_GITHUB: FAB_ADMIN_ROLE,
-        TEAM_ID_B_FROM_GITHUB: FAB_VIEWER_ROLE,
-        TEAM_ID_DAG_LAUNCHER_FROM_GITHUB: FAB_DAG_LAUNCHER_ROLE,
+    role_map = {
+        KEYCLOAK_ADMIN_ROLE: FAB_ADMIN_ROLE,
+        KEYCLOAK_VIEWER_ROLE: FAB_VIEWER_ROLE,
+        KEYCLOAK_DAG_LAUNCHER_ROLE: FAB_DAG_LAUNCHER_ROLE,
     }
-    return list(set(team_role_map.get(team, FAB_PUBLIC_ROLE) for team in team_list))
+
+    mapped_roles = []
+    for kc_role in keycloak_roles:
+        if kc_role in role_map:
+            mapped_roles.append(role_map[kc_role])
+
+    # If no roles match, return Public role
+    return mapped_roles if mapped_roles else [FAB_PUBLIC_ROLE]
 
 
-class GithubTeamAuthorizer(FabAirflowSecurityManagerOverride):
-    # In this example, the oauth provider == 'github'.
-    # If you ever want to support other providers, see how it is done here:
-    # https://github.com/dpgaspar/Flask-AppBuilder/blob/master/flask_appbuilder/security/manager.py#L550
+class KeycloakAuthorizer(FabAirflowSecurityManagerOverride):
+    # Custom security manager for Keycloak OAuth integration.
+    # Extracts user info and roles from Keycloak and maps them to Airflow roles.
+
     def get_oauth_user_info(
         self, provider: str, resp: Any
     ) -> dict[str, Union[str, list[str]]]:
-        # Creates the user info payload from Github.
+        # Creates the user info payload from Keycloak.
         # The user previously allowed your app to act on their behalf,
-        #   so now we can query the user and teams endpoints for their data.
-        # Username and team membership are added to the payload and returned to FAB.
+        # so now we can query the userinfo endpoint for their data.
+        # Username and roles are extracted and returned to FAB.
 
-        remote_app = self.appbuilder.sm.oauth_remotes[provider]
-        me = remote_app.get("user")
-        user_data = me.json()
-        team_data = remote_app.get("user/teams")
-        teams = team_parser(team_data.json())
-        roles = map_roles(teams)
-        print(f"User info from Github: {user_data}\nTeam info from Github: {teams}")
-        return {"username": "github_" + user_data.get("login"), "role_keys": roles}
+        if provider != "keycloak":
+            log.warning(f"Unexpected OAuth provider: {provider}")
+            return {"username": "unknown", "role_keys": [FAB_PUBLIC_ROLE]}
+
+        # Extract roles from the ACCESS TOKEN, not userinfo
+        # The userinfo endpoint doesn't include realm_access or roles by default
+        # We need to decode the JWT access token to get roles
+        keycloak_roles = []
+
+        try:
+            # Get the access token from the OAuth response
+            access_token = None
+
+            # Try different ways to get the access token
+            if hasattr(resp, 'get') and callable(resp.get):
+                access_token = resp.get('access_token')
+            elif isinstance(resp, dict):
+                access_token = resp.get('access_token')
+
+            # Try to get from the remote app's token
+            if not access_token:
+                try:
+                    token = remote_app.token
+                    if token:
+                        access_token = token.get('access_token')
+                except:
+                    pass
+
+            if access_token:
+                decoded_token = jwt.decode(access_token, options={"verify_signature": False})
+                
+                username = decoded_token.get("preferred_username") or decoded_token.get("email") or decoded_token.get("sub")
+                email = decoded_token.get("email")
+                first_name = decoded_token.get("given_name")
+                last_name = decoded_token.get("family_name")
+
+                # Extract realm roles
+                if "realm_access" in decoded_token:
+                    realm_roles = decoded_token["realm_access"].get("roles", [])
+                    keycloak_roles.extend(realm_roles)
+                    log.info(f"Found realm roles: {realm_roles}")
+
+                # Extract client-specific roles
+                if "resource_access" in decoded_token and KEYCLOAK_CLIENT_ID in decoded_token["resource_access"]:
+                    client_roles = decoded_token["resource_access"][KEYCLOAK_CLIENT_ID].get("roles", [])
+                    keycloak_roles.extend(client_roles)
+                    log.info(f"Found client roles: {client_roles}")
+
+                if not keycloak_roles:
+                    log.warning(f"No roles found in token. Decoded token keys: {decoded_token.keys()}")
+            else:
+                log.warning("Could not find access token to extract roles")
+        except Exception as e:
+            log.error(f"Failed to decode JWT token and extract roles: {str(e)}", exc_info=True)
+
+        # Parse and map roles
+        parsed_roles = parse_keycloak_roles(keycloak_roles)
+        airflow_roles = map_keycloak_roles_to_airflow(parsed_roles)
+
+        log.info(f"User info from Keycloak: username={username}, keycloak_roles={parsed_roles}, airflow_roles={airflow_roles}")
+
+        return {
+            "username": f"keycloak_{username}",
+            "email": email,
+            "first_name": first_name,
+            "last_name": last_name,
+            "role_keys": airflow_roles
+        }
+
+    def auth_user_oauth(self, userinfo: dict[str, Any]) -> Any:
+        # Override to properly handle role assignment from OAuth.
+        # This method is called during OAuth login to find or create the user
+        # and assign roles based on the Keycloak token.
+
+        user = self.find_user(username=userinfo["username"])
+
+        # Get the roles to assign
+        role_keys = userinfo.get("role_keys", [FAB_PUBLIC_ROLE])
+
+        log.info(f"auth_user_oauth called for user: {userinfo['username']}, role_keys: {role_keys}")
+
+        # Find the actual role objects from role names
+        roles = []
+        for role_name in role_keys:
+            role = self.find_role(role_name)
+            if role:
+                roles.append(role)
+                log.info(f"Found role: {role_name}")
+            else:
+                log.warning(f"Role not found in database: {role_name}")
+
+        # If no valid roles found, assign Public role
+        if not roles:
+            log.warning(f"No valid roles found for user {userinfo['username']}, assigning Public role")
+            public_role = self.find_role(FAB_PUBLIC_ROLE)
+            if public_role:
+                roles = [public_role]
+
+        # If user doesn't exist, create them
+        if not user:
+            log.info(f"Creating new user: {userinfo['username']}")
+            user = self.add_user(
+                username=userinfo["username"],
+                first_name=userinfo.get("first_name", ""),
+                last_name=userinfo.get("last_name", ""),
+                email=userinfo.get("email", ""),
+                role=roles  # Assign roles during creation
+            )
+        else:
+            log.info(f"Updating existing user: {userinfo['username']}")
+            # Update user's roles
+            user.roles = roles
+            self.update_user(user)
+
+        log.info(f"User {userinfo['username']} logged in with roles: {[r.name for r in user.roles]}")
+
+        return user
 
 
-SECURITY_MANAGER_CLASS = GithubTeamAuthorizer
+SECURITY_MANAGER_CLASS = KeycloakAuthorizer
 # The default user self registration role
-# AUTH_USER_REGISTRATION_ROLE = "Public"
+AUTH_USER_REGISTRATION_ROLE = "Viewer"
 
 # When using OAuth Auth, uncomment to setup provider(s) info
 # Google OAuth example:

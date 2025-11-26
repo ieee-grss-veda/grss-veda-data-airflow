@@ -2,3 +2,12 @@ AWS_ACCESS_KEY_ID=XXXXXXXXXX
 AWS_SECRET_ACCESS_KEY=YYYYYYYYYYY
 AWS_DEFAULT_REGION=us-west-2
 AWS_REGION=us-west-2
+
+# Keycloak OAuth Configuration
+KEYCLOAK_CLIENT_ID=your-keycloak-client-id
+KEYCLOAK_CLIENT_SECRET=your-keycloak-client-secret
+KEYCLOAK_BASE_URL=https://your-keycloak-server.com
+KEYCLOAK_REALM=master
+KEYCLOAK_ADMIN_ROLE=airflow-admin
+KEYCLOAK_VIEWER_ROLE=airflow-viewer
+KEYCLOAK_DAG_LAUNCHER_ROLE=airflow-dag-launcher

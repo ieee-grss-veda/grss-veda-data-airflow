@@ -1,6 +1,7 @@
 apache-airflow-providers-amazon
 botocore
 cryptography
+PyJWT
 # To use SQS as a broker in Celery, you need to install pycurl.
 # https://github.com/saleor/saleor/issues/8804
 pycurl
